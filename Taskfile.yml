@@ -1,0 +1,96 @@
+# tuiffects — build the demo page and the demo binary.
+# The library itself needs nothing but `go test ./...`.
+
+version: '3'
+
+tasks:
+  default:
+    desc: 'Run the tests, then build the binary and the page'
+    deps: [test]
+    cmds:
+      - task: build
+
+  list:
+    desc: 'List the tasks'
+    cmds:
+      - task --list-all
+
+  test:
+    desc: 'Test the library and the demo'
+    cmds:
+      - go test ./...
+      - cd demo && go test ./...
+
+  build:
+    desc: 'Build the native binary and the web page'
+    deps: [build-native, build-web]
+
+  build-native:
+    desc: 'Build bin/tuiffects-demo'
+    dir: demo
+    cmds:
+      - go build -o ../bin/tuiffects-demo ./cmd/tuiffects-demo/
+    sources:
+      - '*.go'
+      - '../*.go'
+      - cmd/tuiffects-demo/*.go
+      - internal/**/*.go
+    generates:
+      - ../bin/tuiffects-demo
+
+  run:
+    desc: 'Run the demo in this terminal: task run -- rain'
+    deps: [build-native]
+    interactive: true
+    cmds:
+      - bin/tuiffects-demo {{.CLI_ARGS}}
+
+  build-catalogue:
+    desc: 'Write web/catalogue.json from the registry'
+    dir: demo
+    cmds:
+      - go run ./cmd/catalogue > ../web/catalogue.json
+    sources:
+      - '../*.go'
+      - cmd/catalogue/*.go
+    generates:
+      - ../web/catalogue.json
+
+  build-wasm:
+    desc: 'Compile the demo to web/app.wasm'
+    dir: demo
+    cmds:
+      - go tool booba-wasm-build -o ../web/app.wasm ./cmd/tuiffects-demo/
+    sources:
+      - '../*.go'
+      - cmd/tuiffects-demo/*.go
+      - internal/**/*.go
+    generates:
+      - ../web/app.wasm
+
+  build-assets:
+    desc: 'Populate web/ with wasm_exec.js, booba/ and ghostty-web/'
+    dir: demo
+    cmds:
+      - go tool booba-assets ../web/
+    generates:
+      - ../web/wasm_exec.js
+      - ../web/booba/booba.js
+      - ../web/ghostty-web/ghostty-web.js
+
+  build-web:
+    desc: 'Build everything the page needs'
+    deps: [build-catalogue, build-wasm, build-assets]
+
+  serve:
+    desc: 'Build the page and serve web/ on http://localhost:3000'
+    deps: [build-web]
+    cmds:
+      - npx serve web
+
+  clean:
+    desc: 'Remove everything the build generates'
+    cmds:
+      - rm -rf bin
+      - rm -f web/app.wasm web/wasm_exec.js web/catalogue.json
+      - rm -rf web/booba web/ghostty-web

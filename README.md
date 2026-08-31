@@ -74,6 +74,23 @@ arrived with, so the screen reassembles as itself rather than in the effect's
 own palette. It is the mode to use when the input is a picture that was
 already on the screen.
 
+## Demo
+
+Every effect runs live at
+[neomantra.github.io/tuiffects](https://neomantra.github.io/tuiffects/): the
+whole catalogue in a real terminal emulator, compiled to WebAssembly with
+[go-booba](https://github.com/NimbleMarkets/go-booba). The same program runs
+in your own terminal:
+
+```sh
+cd demo && go run ./cmd/tuiffects-demo rain
+```
+
+`←`/`→` step through the catalogue, `r` replays, `space` pauses, `q` quits.
+The demo lives in its own module under `demo/` so the library stays free of
+dependencies. To build and serve the page locally, `task serve` (needs
+[Task](https://taskfile.dev) and `npx`), then open http://localhost:3000/.
+
 ## What is here
 
 The engine, in the shape ttfx found it:

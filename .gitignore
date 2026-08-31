@@ -2,3 +2,12 @@
 *.test
 *.out
 /dist/
+
+# Demo build outputs (see Taskfile.yml)
+/bin/
+/.task/
+/web/app.wasm
+/web/wasm_exec.js
+/web/booba/
+/web/ghostty-web/
+/web/catalogue.json

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>tuiffects — terminal text effects for Go</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <h1>tuiffects</h1>
+  <p class="tagline">Terminal text effects for Go, running live in your browser.</p>
+  <p class="credit">
+    A port of <a href="https://github.com/ChrisBuilds/terminaltexteffects">TerminalTextEffects</a>
+    by <a href="https://github.com/ChrisBuilds">ChrisBuilds</a>, by way of
+    <a href="https://github.com/omacom-io/ttfx">ttfx</a>. Every effect here is their design;
+    if you like what you see, star the original.
+  </p>
+  <p class="links">
+    <a class="cta" href="https://github.com/neomantra/tuiffects">View on GitHub</a>
+    <a class="cta cta-secondary" href="https://pkg.go.dev/github.com/Gaurav-Gosain/tuiffects">pkg.go.dev</a>
+  </p>
+</header>
+
+<main>
+  <section class="stage">
+    <p class="now-playing"><span id="now-name">loading…</span> <span id="now-description"></span></p>
+    <div class="terminal-frame"><div id="terminal"></div></div>
+    <p class="hints">
+      <kbd>←</kbd> <kbd>→</kbd> effect · <kbd>r</kbd> replay · <kbd>space</kbd> pause ·
+      click the terminal to give it the keyboard, or click an effect below.
+    </p>
+  </section>
+
+  <section class="catalogue">
+    <h2>Every effect</h2>
+    <ol id="catalogue"></ol>
+  </section>
+</main>
+
+<footer>
+  <p>MIT. Copyright (c) 2026 Gaurav Gosain (tuiffects, this Go port).</p>
+  <p>Copyright (c) 2026 37signals / omacom-io (ttfx, the Rust port this was translated from).</p>
+  <p>Copyright (c) 2023 ChrisBuilds (TerminalTextEffects, the original).</p>
+</footer>
+
+<script src="./wasm_exec.js"></script>
+<script type="module">
+  import { BoobaTerminal } from './booba/booba.js';
+
+  // The tick rate the program runs at. The spec's fallback if the browser
+  // cannot keep up is 30; the engine's virtual clock keeps the animation
+  // looking the same at either rate.
+  const FPS = 60;
+  const TTE_SHOWROOM = 'https://chrisbuilds.github.io/terminaltexteffects/showroom/#';
+
+  const list = document.getElementById('catalogue');
+  const nowName = document.getElementById('now-name');
+  const nowDescription = document.getElementById('now-description');
+  const catalogue = new Map();
+  let current = '';
+
+  function effectFromHash() {
+    try {
+      return decodeURIComponent(location.hash.replace(/^#/, ''));
+    } catch (err) {
+      return '';
+    }
+  }
+
+  function renderCatalogue(entries) {
+    for (const entry of entries) {
+      catalogue.set(entry.name, entry);
+      const item = document.createElement('li');
+      item.id = 'effect-' + entry.name;
+      item.addEventListener('click', (event) => {
+        if (event.target.closest('a')) return; // the upstream link navigates; it does not select
+        select(entry.name);
+      });
+
+      const name = document.createElement('button');
+      name.type = 'button';
+      name.className = 'effect-name';
+      name.textContent = entry.name;
+
+      const description = document.createElement('span');
+      description.className = 'effect-description';
+      description.textContent = entry.description;
+
+      item.append(name, description);
+      if (entry.origin) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'original';
+        tag.title = entry.origin;
+        item.append(tag);
+      } else {
+        const upstream = document.createElement('a');
+        upstream.className = 'upstream';
+        upstream.href = TTE_SHOWROOM + entry.name;
+        upstream.target = '_blank';
+        upstream.rel = 'noopener';
+        upstream.textContent = 'upstream ↗';
+        item.append(upstream);
+      }
+      list.append(item);
+    }
+  }
+
+  // The program reports what it is playing through the terminal title.
+  function showCurrent(name) {
+    if (name === current) return;
+    current = name;
+    const entry = catalogue.get(name);
+    nowName.textContent = name;
+    nowDescription.textContent = entry ? entry.description : '';
+    for (const item of list.children) {
+      item.classList.toggle('current', item.id === 'effect-' + name);
+    }
+    if (effectFromHash() !== name) {
+      history.replaceState(null, '', '#' + name);
+    }
+  }
+
+  function select(name) {
+    if (!catalogue.has(name)) return;
+    if (effectFromHash() !== name) history.replaceState(null, '', '#' + name);
+    if (typeof window.tuiffects_select === 'function') {
+      window.tuiffects_select(name);
+    }
+  }
+
+  async function main() {
+    const entries = await (await fetch('./catalogue.json')).json();
+    renderCatalogue(entries);
+
+    const go = new Go();
+    const result = await WebAssembly.instantiateStreaming(fetch('./app.wasm'), go.importObject);
+    // Read the hash only now: a click during the download has updated it, and
+    // an unknown or malformed hash must never reach the program's flag parser.
+    const wanted = effectFromHash();
+    go.argv = ['tuiffects-demo', '--fps', String(FPS)];
+    if (catalogue.has(wanted)) go.argv.push(wanted);
+    go.run(result.instance).then(() => {
+      nowName.textContent = 'the demo stopped';
+      nowDescription.textContent = '';
+    });
+
+    const booba = new BoobaTerminal('terminal', { fontSize: 14, cursorBlink: false });
+    booba.onTitleChange = (title) => { if (title) showCurrent(title); };
+    await booba.init();
+    booba.connectWasm();
+    document.querySelector('.terminal-frame').addEventListener('click', () => booba.focus());
+
+    window.addEventListener('hashchange', () => {
+      const name = effectFromHash();
+      if (catalogue.has(name)) {
+        if (name !== current) select(name);
+      } else if (current) {
+        history.replaceState(null, '', '#' + current);
+      }
+    });
+  }
+
+  main().catch((err) => {
+    nowName.textContent = 'the demo failed to start: ' + err;
+    console.error(err);
+  });
+</script>
+</body>
+</html>

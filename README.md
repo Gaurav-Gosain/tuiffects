@@ -91,6 +91,24 @@ The demo lives in its own module under `demo/` so the library stays free of
 dependencies. To build and serve the page locally, `task serve` (needs
 [Task](https://taskfile.dev) and `npx`), then open http://localhost:3000/.
 
+### One change to how the page draws
+
+`web/ghostty-web-viewport.js` is ours, and the page loads it. It is the only
+part of the demo that reaches into a dependency.
+
+ghostty-web's renderer paints a frame one row at a time, and each row asks the
+terminal for that row. That request reads every cell in the grid, so a frame
+that paints forty rows reads the grid forty times. The file wraps two methods
+so a frame reads the grid once. On this catalogue that makes each frame three
+to four times cheaper and about doubles the frames the page can paint.
+
+It does not edit anything under `web/ghostty-web/`. Those files are copied in
+by `go tool booba-assets` and stay exactly as go-booba ships them.
+
+The same change is written up for ghostty-web itself in `upstream/`. When it
+lands there, delete `web/ghostty-web-viewport.js` and its two lines in
+`web/index.html`.
+
 ## What is here
 
 The engine, in the shape ttfx found it:

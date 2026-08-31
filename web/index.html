@@ -48,6 +48,7 @@
 <script src="./wasm_exec.js"></script>
 <script type="module">
   import { BoobaTerminal } from './booba/booba.js';
+  import { readViewportOncePerFrame } from './ghostty-web-viewport.js';
 
   // The tick rate the program runs at. Keep it at 60.
   // Of the 36 effects, 33 count frames, so at 30 they take twice as long.
@@ -151,6 +152,9 @@
     const booba = new BoobaTerminal('terminal', { fontSize: 14, cursorBlink: false });
     booba.onTitleChange = (title) => { if (title) showCurrent(title); };
     await booba.init();
+    // ghostty-web reads the whole grid again for every row it paints. This
+    // makes it read the grid once per frame. See ghostty-web-viewport.js.
+    readViewportOncePerFrame(booba.terminal);
     booba.connectWasm();
     document.querySelector('.terminal-frame').addEventListener('click', () => booba.focus());
 

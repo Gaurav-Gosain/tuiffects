@@ -49,9 +49,10 @@
 <script type="module">
   import { BoobaTerminal } from './booba/booba.js';
 
-  // The tick rate the program runs at. The spec's fallback if the browser
-  // cannot keep up is 30; the engine's virtual clock keeps the animation
-  // looking the same at either rate.
+  // The tick rate the program runs at. Keep it at 60.
+  // Of the 36 effects, 33 count frames, so at 30 they take twice as long.
+  // matrix, thunderstorm and tuffbaby read the engine clock, so 30 changes
+  // them less. It still does not make them look the same.
   const FPS = 60;
   const TTE_SHOWROOM = 'https://chrisbuilds.github.io/terminaltexteffects/showroom/#';
 

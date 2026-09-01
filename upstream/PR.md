@@ -77,7 +77,7 @@ the change, in one page.
 
 ## A second measurement, on a real page
 
-tuiffects (https://github.com/neomantra/tuiffects) is a terminal animation
+tuiffects (https://github.com/Gaurav-Gosain/tuiffects) is a terminal animation
 catalogue compiled to wasm and drawn through ghostty-web. It repaints most of a
 114x42 grid every frame, which is the load this path is worst at.
 

@@ -1,5 +1,5 @@
 From f18fc631bb09c6a6a6e3dde1e8f73c440ac5dd78 Mon Sep 17 00:00:00 2001
-From: Gaurav Gosain <gauravgosain01@gmail.com>
+From: Gaurav Gosain <itsgauravgosain@gmail.com>
 Date: Mon, 31 Aug 2026 23:22:05 +0400
 Subject: [PATCH] perf(renderer): read the viewport once per frame
 

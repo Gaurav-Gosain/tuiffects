@@ -2,6 +2,9 @@
 *.test
 *.out
 /dist/
+# `go build ./...` from the root drops the command's binary here
+/tuiffects
+/tuiffects.exe
 
 # Demo build outputs (see Taskfile.yml)
 /bin/

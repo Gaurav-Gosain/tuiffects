@@ -74,6 +74,34 @@ arrived with, so the screen reassembles as itself rather than in the effect's
 own palette. It is the mode to use when the input is a picture that was
 already on the screen.
 
+## The command
+
+`tuiffects` animates whatever you give it: an argument, a file, or a pipe.
+
+```sh
+go install github.com/Gaurav-Gosain/tuiffects/cmd/tuiffects@latest
+```
+
+```sh
+echo hello | tuiffects
+ls --color=always | tuiffects
+git diff --color | tuiffects -e burn
+tuiffects "shipped"
+tuiffects capture.ans
+```
+
+It reads the SGR colours in the input and keeps them, so what dissolves and
+re-forms is your own output rather than a recolouring of it. With no colours in
+the input the effect uses its own palette instead. `--list` names the effects,
+`--effect` picks one, and with no flags it picks at random.
+
+The animation is drawn where the command's output would have been, and the
+finished picture stays there. If the output is not a terminal, `ls | tuiffects
+| less`, the input is copied through and nothing is animated.
+
+It lives under `cmd/` and it adds no dependency to the module: everything it
+needs beyond the library is the standard library.
+
 ## Demo
 
 Every effect runs live at

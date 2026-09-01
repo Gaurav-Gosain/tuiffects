@@ -16,14 +16,24 @@ tasks:
       - task --list-all
 
   test:
-    desc: 'Test the library and the demo'
+    desc: 'Test the library, the command and the demo'
     cmds:
       - go test ./...
       - cd demo && go test ./...
 
   build:
-    desc: 'Build the native binary and the web page'
-    deps: [build-native, build-web]
+    desc: 'Build the command, the native demo binary and the web page'
+    deps: [build-cli, build-native, build-web]
+
+  build-cli:
+    desc: 'Build bin/tuiffects, the command'
+    cmds:
+      - go build -o bin/tuiffects ./cmd/tuiffects/
+    sources:
+      - '*.go'
+      - cmd/tuiffects/*.go
+    generates:
+      - bin/tuiffects
 
   build-native:
     desc: 'Build bin/tuiffects-demo'

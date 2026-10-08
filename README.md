@@ -105,7 +105,7 @@ needs beyond the library is the standard library.
 ## Demo
 
 Every effect runs live at
-[neomantra.github.io/tuiffects](https://neomantra.github.io/tuiffects/): the
+[gaurav-gosain.github.io/tuiffects](https://gaurav-gosain.github.io/tuiffects/): the
 whole catalogue in a real terminal emulator, compiled to WebAssembly with
 [go-booba](https://github.com/NimbleMarkets/go-booba). The same program runs
 in your own terminal:
@@ -241,7 +241,8 @@ colour policy does, and what a finished port has to include.
   the host really paints at: `NewEngine` assumes sixty, and every effect
   written in seconds runs at the wrong speed on a host that paints at anything
   else. `NewRealClock` is there for a host that would rather have wall time.
-* No command line, no tty writer, no resize handling. The host owns the screen.
+* No resize handling in the library. The host owns the screen. The command
+  under `cmd/tuiffects` is the one place that writes to a tty.
 * Thirty-five effects rather than thirty-seven. `beams` and `colorshift` are
   not ported.
 * Rounding quirks that change how effects look **are** kept: half-to-even

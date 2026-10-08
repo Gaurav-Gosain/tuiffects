@@ -91,18 +91,17 @@ func TestSpotlightsStartsDarkAndEndsLit(t *testing.T) {
 		t.Fatal("the effect never finished within the frame cap")
 	}
 
-	lit := sgrForFg(fg)
-	dark := sgrForFg(AdjustColorBrightness(fg, 0.2))
-	if got := strings.Count(frames[0], dark); got < cols*rows/2 {
+	dark := AdjustColorBrightness(fg, 0.2)
+	if got := countFg(t, frames[0], dark); got < cols*rows/2 {
 		t.Errorf("the first frame is dark in %d of its %d cells, want most of the screen dark",
 			got, cols*rows)
 	}
 	last := frames[len(frames)-1]
-	if got := strings.Count(last, lit); got != cols*rows {
+	if got := countFg(t, last, fg); got != cols*rows {
 		t.Errorf("the final frame carries the lit colour %d times, want every one of the %d cells",
 			got, cols*rows)
 	}
-	if strings.Contains(last, dark) {
+	if countFg(t, last, dark) > 0 {
 		t.Error("the final frame still carries the dark the run started in")
 	}
 }

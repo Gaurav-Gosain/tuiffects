@@ -7,21 +7,37 @@ import "strconv"
 // walk the collection in the order they built it, so a plain Go map would
 // change behaviour rather than just layout.
 //
-// Lookup is a linear scan rather than a hash map, deliberately. There is one of
-// these per character for its scenes and another for its paths, and both hold a
-// handful of entries at most: comparing three short strings beats hashing one,
-// and it saves two map allocations per character. Over a full screen that is
-// tens of thousands of maps that never existed.
+// Lookup is a linear scan while the map is small, deliberately. There is one of
+// these per character for its scenes and another for its paths, and most hold
+// a handful of entries: comparing three short strings beats hashing one, and
+// it saves two map allocations per character. Over a full screen that is tens
+// of thousands of maps that never existed.
+//
+// Some effects do put hundreds of entries in one. rings gives each character a
+// path per ring cell, and a scan of those ids was 58% of its frame CPU. Past
+// orderedMapIndexAt entries the map builds a hash index and looks up there.
 type orderedMap[T any] struct {
 	keys   []string
 	values []*T
+	// index maps a key to its position. It is nil until the map grows past
+	// orderedMapIndexAt entries.
+	index map[string]int
 }
+
+// orderedMapIndexAt is the size above which an orderedMap keeps a hash index.
+const orderedMapIndexAt = 8
 
 func newOrderedMap[T any]() orderedMap[T] { return orderedMap[T]{} }
 
 func (m *orderedMap[T]) Len() int { return len(m.keys) }
 
 func (m *orderedMap[T]) indexOf(key string) int {
+	if m.index != nil {
+		if i, ok := m.index[key]; ok {
+			return i
+		}
+		return -1
+	}
 	for i, k := range m.keys {
 		if k == key {
 			return i
@@ -48,6 +64,15 @@ func (m *orderedMap[T]) Set(key string, value *T) {
 	}
 	m.keys = append(m.keys, key)
 	m.values = append(m.values, value)
+	switch {
+	case m.index != nil:
+		m.index[key] = len(m.keys) - 1
+	case len(m.keys) > orderedMapIndexAt:
+		m.index = make(map[string]int, 2*len(m.keys))
+		for i, k := range m.keys {
+			m.index[k] = i
+		}
+	}
 }
 
 func (m *orderedMap[T]) Keys() []string { return m.keys }
@@ -69,4 +94,5 @@ func (m *orderedMap[T]) nextAutoID() string {
 func (m *orderedMap[T]) Clear() {
 	m.keys = m.keys[:0]
 	m.values = m.values[:0]
+	m.index = nil
 }

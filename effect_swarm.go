@@ -133,7 +133,9 @@ func (s *Swarm) makeSwarms(e *Engine, swarmSize int) error {
 		s.swarms = append(s.swarms, newSwarm)
 	}
 	if len(s.swarms) == 0 {
-		return fmt.Errorf("swarm: the input has no characters to swarm")
+		// Nothing to swarm, so Advance ends the effect on its first call,
+		// as every other effect does over an empty screen.
+		return nil
 	}
 	final := s.swarms[len(s.swarms)-1]
 	s.swarms = s.swarms[:len(s.swarms)-1]

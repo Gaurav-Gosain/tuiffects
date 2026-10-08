@@ -101,6 +101,10 @@ type Terminal struct {
 	// then regrew from nothing sixty times a second and allocated 827 KB to
 	// produce 28 KB of output.
 	frameBuffer []byte
+	// rows and rowCells back FrameRows, and are reused across calls the same
+	// way frameBuffer is.
+	rows     [][]*CharacterVisual
+	rowCells []*CharacterVisual
 
 	// visuals is shared by every character in this run. See visualCache.
 	visuals *visualCache
@@ -141,13 +145,15 @@ func NewTerminalFromText(input string, cfg TerminalConfig) *Terminal {
 // A cell's own colours become the character's input colours, so an effect run
 // with DynamicExistingColors resolves the screen back to how it looked.
 func NewTerminalFromCells(grid [][]InputCell, cfg TerminalConfig) *Terminal {
-	cfg = normalizeConfig(cfg)
+	// The fallback to the grid's size has to come before normalizeConfig,
+	// which raises a zero size to 1.
 	if cfg.Width == 0 && len(grid) > 0 {
 		cfg.Width = len(grid[0])
 	}
 	if cfg.Height == 0 {
 		cfg.Height = len(grid)
 	}
+	cfg = normalizeConfig(cfg)
 	t := newTerminal(cfg)
 
 	height := len(grid)
@@ -155,7 +161,10 @@ func NewTerminalFromCells(grid [][]InputCell, cfg TerminalConfig) *Terminal {
 	for y, row := range grid {
 		canvasRow := height - y
 		for x, cell := range row {
-			blank := cell.Symbol == "" || cell.Symbol == " "
+			// A control character in a symbol would reach the frame raw, and
+			// the host's terminal would read it as a command.
+			symbol := stripControls(cell.Symbol)
+			blank := symbol == "" || symbol == " "
 			// A blank cell that carries its own background is still worth
 			// animating: on a captured screen that is the window chrome, the
 			// dock and every filled panel, and dropping them would resolve the
@@ -163,7 +172,6 @@ func NewTerminalFromCells(grid [][]InputCell, cfg TerminalConfig) *Terminal {
 			if blank && !cell.HasBg {
 				continue
 			}
-			symbol := cell.Symbol
 			if symbol == "" {
 				symbol = " "
 			}
@@ -526,21 +534,37 @@ func (t *Terminal) paint() (width, height int) {
 // that keeps them must copy.
 func (t *Terminal) FrameRows() [][]*CharacterVisual {
 	width, height := t.paint()
-	rows := make([][]*CharacterVisual, 0, height)
-	for row := height - 1; row >= 0; row-- {
-		line := make([]*CharacterVisual, width)
-		for column := 0; column < width; column++ {
+	if cap(t.rowCells) < width*height {
+		t.rowCells = make([]*CharacterVisual, width*height)
+	}
+	if cap(t.rows) < height {
+		t.rows = make([][]*CharacterVisual, height)
+	}
+	cells, rows := t.rowCells[:width*height], t.rows[:height]
+	for i := range rows {
+		// The full slice expression caps each row at its own width, so a
+		// caller that appends to one row cannot write into the next.
+		line := cells[i*width : (i+1)*width : (i+1)*width]
+		row := height - 1 - i
+		for column := range line {
+			line[column] = nil
 			if ch := t.renderCells[row*width+column]; ch != nil {
 				line[column] = ch.Animation.currentVisual
 			}
 		}
-		rows = append(rows, line)
+		rows[i] = line
 	}
 	return rows
 }
 
 // Frame returns the current frame as an ANSI string, top row first, with rows
-// separated by newlines and no trailing newline.
+// separated by newlines and no trailing newline. Every row ends with no style
+// left on, so a host can write the rows anywhere.
+//
+// A style is written once at the start of each run of cells that share it,
+// not around every cell. The host parses this string again every time it
+// draws, and a settled full screen is mostly long runs of one colour: at
+// 200x50 that is about 20 KB where a sequence per cell was 220 KB.
 func (t *Terminal) Frame() string {
 	width, height := t.paint()
 	buffer := t.frameBuffer[:0]
@@ -551,20 +575,42 @@ func (t *Terminal) Frame() string {
 		if row+1 < height {
 			buffer = append(buffer, '\n')
 		}
+		// run is the visual whose style is on, or nil when none is.
+		var run *CharacterVisual
 		for column := 0; column < width; column++ {
-			if ch := t.renderCells[row*width+column]; ch != nil {
-				buffer = append(buffer, ch.Animation.currentVisual.formatted...)
-			} else {
+			ch := t.renderCells[row*width+column]
+			if ch == nil {
+				if run != nil {
+					buffer = append(buffer, sgrReset...)
+					run = nil
+				}
 				buffer = append(buffer, ' ')
+				continue
 			}
+			visual := ch.Animation.currentVisual
+			if run == nil || !run.sameStyle(visual) {
+				if run != nil {
+					buffer = append(buffer, sgrReset...)
+					run = nil
+				}
+				if visual.sgr != "" {
+					buffer = append(buffer, visual.sgr...)
+					run = visual
+				}
+			}
+			buffer = append(buffer, visual.Symbol...)
+		}
+		if run != nil {
+			buffer = append(buffer, sgrReset...)
 		}
 	}
 	t.frameBuffer = buffer
 	return string(buffer)
 }
 
-// preprocessLines expands tabs, strips carriage returns, and trims trailing
-// blank lines so the canvas is not padded by them.
+// preprocessLines expands tabs, drops carriage returns and every other control
+// character, and trims trailing blank lines so the canvas is not padded by
+// them.
 func preprocessLines(input string, tabWidth int) []string {
 	if input == "" {
 		return []string{"No input."}
@@ -572,16 +618,38 @@ func preprocessLines(input string, tabWidth int) []string {
 	input = strings.ReplaceAll(input, "\r\n", "\n")
 	input = strings.ReplaceAll(input, "\t", strings.Repeat(" ", tabWidth))
 	lines := strings.Split(input, "\n")
+	for i, line := range lines {
+		if !utf8.ValidString(line) {
+			line = strings.ToValidUTF8(line, "")
+		}
+		lines[i] = stripControls(line)
+	}
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
 	if len(lines) == 0 {
 		return []string{"No input."}
 	}
-	for i, line := range lines {
-		if !utf8.ValidString(line) {
-			lines[i] = strings.ToValidUTF8(line, "")
-		}
-	}
 	return lines
+}
+
+// isControl reports whether r is a C0 control, DEL or a C1 control. A
+// terminal reads any of them as part of a command, never as text.
+func isControl(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
+}
+
+// stripControls drops every control character from s. Input text and captured
+// cells come from other programs' output, and a control kept as a character
+// would be written straight back to the host's terminal in the frame.
+func stripControls(s string) string {
+	if !strings.ContainsFunc(s, isControl) {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if isControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

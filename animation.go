@@ -35,7 +35,8 @@ const (
 )
 
 // CharacterVisual is one character's appearance for one frame, with its SGR
-// string precomputed because the renderer emits it per visible cell per frame.
+// string precomputed because the renderer emits it for every run of cells in
+// one style, every frame.
 type CharacterVisual struct {
 	Symbol    string
 	Bold      bool
@@ -44,6 +45,10 @@ type CharacterVisual struct {
 	Colors    ColorPair
 
 	formatted string
+	// sgr is the SGR prefix of formatted: what turns this visual's style on,
+	// or "" for a visual with no style. The frame writer uses it at the start
+	// of a run of cells that share a style.
+	sgr string
 }
 
 // VisualParams are the settable fields of a CharacterVisual.
@@ -63,7 +68,11 @@ func NewCharacterVisual(symbol string, p VisualParams) *CharacterVisual {
 		Underline: p.Underline,
 		Colors:    p.Colors,
 	}
-	v.formatted = v.format()
+	v.sgr = v.styleSGR()
+	v.formatted = v.sgr + v.Symbol
+	if v.sgr != "" {
+		v.formatted += sgrReset
+	}
 	return v
 }
 
@@ -75,7 +84,17 @@ func PlainVisual(symbol string) *CharacterVisual {
 // Formatted returns the symbol wrapped in its SGR sequences.
 func (v *CharacterVisual) Formatted() string { return v.formatted }
 
-func (v *CharacterVisual) format() string {
+// sgrReset turns every style off.
+const sgrReset = "\x1b[0m"
+
+// sameStyle reports whether two visuals draw with the same SGR state, so a
+// cell of one can follow a cell of the other with no sequence between them.
+func (v *CharacterVisual) sameStyle(o *CharacterVisual) bool {
+	return v == o || (v.Bold == o.Bold && v.Italic == o.Italic &&
+		v.Underline == o.Underline && v.Colors == o.Colors)
+}
+
+func (v *CharacterVisual) styleSGR() string {
 	var b strings.Builder
 	if v.Bold {
 		b.WriteString("\x1b[1m")
@@ -92,11 +111,6 @@ func (v *CharacterVisual) format() string {
 	if v.Colors.HasBg {
 		writeSGRColor(&b, "48", v.Colors.Bg)
 	}
-	if b.Len() == 0 {
-		return v.Symbol
-	}
-	b.WriteString(v.Symbol)
-	b.WriteString("\x1b[0m")
 	return b.String()
 }
 

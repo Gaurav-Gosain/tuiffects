@@ -233,7 +233,7 @@ func TestFrameDrawsTheSameCellsAsFrameRows(t *testing.T) {
 //
 // A cell in a run of the same style needs only its symbol. Wrapping every
 // cell in its own SGR and reset made a settled 200x50 highlight frame 222,513
-// bytes, where 19,159 draw the same cells.
+// bytes, where 19,609 draw the same cells.
 //
 // Negative control: writing each visual's own SGR and reset per cell takes
 // this frame to 222,513 bytes.
@@ -251,4 +251,33 @@ func TestSettledFrameIsSmall(t *testing.T) {
 	if len(frame) > budget {
 		t.Errorf("frame is %d bytes, want under %d", len(frame), budget)
 	}
+}
+
+// TestFrameWritesEachAttributeChange covers the attribute half of sameStyle.
+// No shipped effect sets italic or underline, and bold comes only from the
+// input, so the full-screen check above never puts two cells side by side
+// that differ only in an attribute.
+//
+// Negative control: with only Colors compared in sameStyle, the bold cell is
+// drawn plain.
+func TestFrameWritesEachAttributeChange(t *testing.T) {
+	colors := ColorPair{Fg: RGB(200, 100, 50), HasFg: true}
+	params := []VisualParams{
+		{Colors: colors},
+		{Colors: colors, Bold: true},
+		{Colors: colors, Bold: true},
+		{Colors: colors, Italic: true},
+		{Colors: colors, Underline: true},
+		{Colors: colors},
+	}
+	row := make([]InputCell, len(params))
+	for x := range row {
+		row[x] = InputCell{Symbol: string(rune('a' + x))}
+	}
+	term := NewTerminalFromCells([][]InputCell{row}, TerminalConfig{Width: len(row), Height: 1})
+	for i, ch := range term.InputCharacters {
+		term.SetCharacterVisibility(ch, true)
+		ch.Animation.currentVisual = NewCharacterVisual(ch.InputSymbol, params[i])
+	}
+	assertFrameDrawsRows(t, "attributes", term.Frame(), term.FrameRows())
 }

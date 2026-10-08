@@ -35,6 +35,11 @@ func assertOnlySGR(t *testing.T, label, frame string) {
 			t.Fatalf("%s: control byte %#x at byte %d: %q", label, b, i, around(frame, i))
 		case b >= 0x80:
 			r, size := utf8.DecodeRuneInString(frame[i:])
+			// A terminal that reads 8-bit controls takes a raw byte such as
+			// 0x9b as CSI, so a byte that is not valid UTF-8 fails too.
+			if r == utf8.RuneError && size == 1 {
+				t.Fatalf("%s: invalid UTF-8 byte %#x at byte %d: %q", label, b, i, around(frame, i))
+			}
 			if r >= 0x80 && r <= 0x9f {
 				t.Fatalf("%s: C1 control U+%04X at byte %d: %q", label, r, i, around(frame, i))
 			}
@@ -101,7 +106,8 @@ func TestTextInputDropsControlCharacters(t *testing.T) {
 // cell symbol is still a string from someone else's output.
 //
 // Negative control: without the sanitising in NewTerminalFromCells the ESC
-// cell reaches the frame as a raw ESC.
+// cell reaches the frame as a raw ESC. Without the UTF-8 check before it, the
+// raw 0x9b byte and the split U+009D reach the frame.
 func TestCellInputDropsControlCharacters(t *testing.T) {
 	grid := [][]InputCell{{
 		{Symbol: "a"},
@@ -124,6 +130,31 @@ func TestCellInputDropsControlCharacters(t *testing.T) {
 		term.SetCharacterVisibility(ch, true)
 	}
 	assertOnlySGR(t, "cells", term.Frame())
+
+	// Bytes that are not valid UTF-8 go too. A raw 0x9b is an 8-bit CSI to a
+	// terminal that reads 8-bit controls. A lone 0xc2 in one cell and 0x9d at
+	// the start of the next join in the frame into U+009D, the OSC
+	// introducer, though neither cell holds a control on its own.
+	grid = [][]InputCell{{
+		{Symbol: "a"},
+		{Symbol: "\x9b31m"},
+		{Symbol: "\xc2"},
+		{Symbol: "\x9dx"},
+		{Symbol: "b"},
+	}}
+	term = NewTerminalFromCells(grid, TerminalConfig{Width: 5, Height: 1})
+	got = got[:0]
+	for _, ch := range term.InputCharacters {
+		got = append(got, ch.InputSymbol)
+	}
+	// The 0xc2 cell is empty once the byte goes, so it is dropped.
+	if want := []string{"a", "31m", "x", "b"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("invalid UTF-8: input characters = %q, want %q", got, want)
+	}
+	for _, ch := range term.InputCharacters {
+		term.SetCharacterVisibility(ch, true)
+	}
+	assertOnlySGR(t, "invalid UTF-8 cells", term.Frame())
 }
 
 // TestZeroSizeConfigTakesTheGridSize covers the fallback the doc of
@@ -145,7 +176,8 @@ func TestZeroSizeConfigTakesTheGridSize(t *testing.T) {
 // caller the slices are reused between calls.
 //
 // Negative control: allocating the rows on each call costs 51 allocations at
-// 200x50, one per row plus the outer slice.
+// 200x50, one per row plus the outer slice. Without the full slice
+// expression, the capacity of the first row is 10,000, the whole grid.
 func TestFrameRowsReusesItsSlices(t *testing.T) {
 	const cols, rows = 200, 50
 	term := NewTerminalFromCells(fullScreenGrid(cols, rows, 16), TerminalConfig{Width: cols, Height: rows})
@@ -155,6 +187,11 @@ func TestFrameRowsReusesItsSlices(t *testing.T) {
 	first := term.FrameRows()
 	if len(first) != rows || len(first[0]) != cols {
 		t.Fatalf("FrameRows is %dx%d, want %dx%d", len(first[0]), len(first), cols, rows)
+	}
+	// Each row is capped at its own width, so an append to one row cannot
+	// write into the next.
+	if got := cap(first[0]); got != cols {
+		t.Errorf("cap of a row = %d, want %d", got, cols)
 	}
 	if allocs := testing.AllocsPerRun(20, func() { _ = term.FrameRows() }); allocs != 0 {
 		t.Errorf("FrameRows allocates %.0f times per call, want 0", allocs)

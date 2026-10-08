@@ -162,8 +162,11 @@ func NewTerminalFromCells(grid [][]InputCell, cfg TerminalConfig) *Terminal {
 		canvasRow := height - y
 		for x, cell := range row {
 			// A control character in a symbol would reach the frame raw, and
-			// the host's terminal would read it as a command.
-			symbol := stripControls(cell.Symbol)
+			// the host's terminal would read it as a command. Invalid UTF-8
+			// goes first: a raw 8-bit C1 byte such as 0x9b decodes as U+FFFD,
+			// so stripControls cannot see it, and a lone lead byte in one cell
+			// can join the next cell's bytes into a C1 control in the frame.
+			symbol := stripControls(strings.ToValidUTF8(cell.Symbol, ""))
 			blank := symbol == "" || symbol == " "
 			// A blank cell that carries its own background is still worth
 			// animating: on a captured screen that is the window chrome, the
